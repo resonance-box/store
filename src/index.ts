@@ -5,4 +5,4 @@ async function createStore(): Promise<Store> {
   return new Store()
 }
 
-export { createStore }
+export { Store, createStore }
