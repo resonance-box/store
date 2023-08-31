@@ -1,5 +1,5 @@
 [package]
-name = "resonance-box-store"
+name = "store"
 version = "0.0.1"
 authors = ["ot07 <ot07neoki@gmail.com>"]
 edition = "2021"

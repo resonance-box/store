@@ -9,30 +9,31 @@ use std::{
 };
 use wasm_bindgen::prelude::*;
 
-#[wasm_bindgen(typescript_custom_section)]
-const TS_TRACK_CLASS: &'static str = r#"
-export class Track {
-  free(): void;
-  
-  constructor();
+// #[wasm_bindgen(typescript_custom_section)]
+// const TS_TRACK_CLASS: &'static str = r#"
+// export class Track {
+//   free(): void;
 
-  getEvent(event_id: string): Event | undefined;
+//   constructor();
 
-  getSortedEvents(): Array<Event>;
+//   getEvent(event_id: string): Event | undefined;
 
-  getSortedEventsInTicksRange(start_ticks: number, end_ticks: number): Array<Event>;
+//   getSortedEvents(): Array<Event>;
 
-  addEvent(event: EventInput): void;
+//   getSortedEventsInTicksRange(start_ticks: number, end_ticks: number): Array<Event>;
 
-  updateEvent(event: EventUpdater): void;
+//   addEvent(event: EventInput): void;
 
-  removeEvent(event_id: string): void;
+//   updateEvent(event: EventUpdater): void;
 
-  readonly id: string;
-}
-"#;
+//   removeEvent(event_id: string): void;
 
-#[wasm_bindgen(skip_typescript)]
+//   readonly id: string;
+// }
+// "#;
+
+// #[wasm_bindgen(skip_typescript)]
+#[wasm_bindgen]
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Track {
     id: Id,
@@ -43,8 +44,7 @@ pub struct Track {
 
 #[wasm_bindgen]
 impl Track {
-    #[wasm_bindgen(constructor)]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Track {
             id: Id::new(),
             events: HashMap::new(),
@@ -57,26 +57,8 @@ impl Track {
         self.id
     }
 
-    #[wasm_bindgen(getter = id)]
-    pub fn get_id_js(&self) -> String {
-        self.get_id().to_string()
-    }
-
     pub(crate) fn get_event(&self, event_id: Id) -> Option<&Event> {
         self.events.get(&event_id)
-    }
-
-    #[wasm_bindgen(js_name = getEvent)]
-    pub fn get_event_js(&self, event_id: &str) -> Option<js_sys::Object> {
-        if let Ok(event_id) = Id::try_from(event_id) {
-            if let Some(event) = self.get_event(event_id) {
-                Some(event.to_js_object())
-            } else {
-                None
-            }
-        } else {
-            None
-        }
     }
 
     pub(crate) fn get_sorted_events(&self) -> Vec<&Event> {
@@ -84,14 +66,6 @@ impl Track {
             .iter()
             .map(|(_, ids)| ids.iter().filter_map(|id| self.events.get(id)))
             .flatten()
-            .collect()
-    }
-
-    #[wasm_bindgen(js_name = getSortedEvents)]
-    pub fn get_sorted_events_js(&self) -> js_sys::Array {
-        self.get_sorted_events()
-            .iter()
-            .map(|event| event.to_js_object())
             .collect()
     }
 
@@ -153,18 +127,6 @@ impl Track {
         merged_events
     }
 
-    #[wasm_bindgen(js_name = getSortedEventsInTicksRange)]
-    pub fn get_sorted_events_in_ticks_range_js(
-        &self,
-        start_ticks: u32,
-        end_ticks: u32,
-    ) -> js_sys::Array {
-        self.get_sorted_events_in_ticks_range(Ticks::new(start_ticks), Ticks::new(end_ticks))
-            .iter()
-            .map(|event| event.to_js_object())
-            .collect()
-    }
-
     fn _add_event(&mut self, event: Event) -> Event {
         let id = event.get_id();
         let ticks = event.get_ticks();
@@ -192,12 +154,6 @@ impl Track {
         self._add_event(event)
     }
 
-    #[wasm_bindgen(js_name = addEvent)]
-    pub fn add_event_js(&mut self, event: js_sys::Object) {
-        let event = EventInput::from_js_object(event);
-        self.add_event(event);
-    }
-
     pub(crate) fn update_event(&mut self, updater: EventUpdater) {
         let id = updater.get_id();
 
@@ -206,12 +162,6 @@ impl Track {
             self.remove_event(id);
             self._add_event(new_event);
         }
-    }
-
-    #[wasm_bindgen(js_name = updateEvent)]
-    pub fn update_event_js(&mut self, event: js_sys::Object) {
-        let event = EventUpdater::from_js_object(event);
-        self.update_event(event);
     }
 
     pub(crate) fn remove_event(&mut self, event_id: Id) {
@@ -225,13 +175,6 @@ impl Track {
         }
 
         self.events.remove(&event_id);
-    }
-
-    #[wasm_bindgen(js_name = removeEvent)]
-    pub fn remove_event_js(&mut self, event_id: &str) {
-        if let Ok(event_id) = Id::try_from(event_id) {
-            self.remove_event(event_id);
-        }
     }
 }
 
