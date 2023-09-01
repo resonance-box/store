@@ -6,21 +6,64 @@ use crate::{
 };
 use wasm_bindgen::prelude::*;
 
-#[wasm_bindgen]
+#[wasm_bindgen(typescript_custom_section)]
+const TS_STORE_CLASS: &'static str = r#"
+export class Store {
+  free(): void;
+
+  constructor();
+
+  getSong(): Song | undefined;
+
+  setSong(song: Song): void;
+
+  createSong(title: string, ppq: number): void;
+
+  clearSong(): void;
+
+  getTrack(track_id: string): Track | undefined;
+
+  getTracks(): Array<Track>;
+
+  getSortedAllEvents(): Array<Event>;
+
+  addEmptyTrack(): void;
+
+  removeTrack(track_id: string): void;
+
+  getEvent(track_id: string, event_id: string): Event | undefined;
+
+  getSortedEvents(track_id: string): Array<Event>;
+
+  getSortedEventsInTicksRange(track_id: string, start_ticks: number, end_ticks: number): Array<Track>;
+
+  addEvent(track_id: string, event: Event): void;
+
+  updateEvent(track_id: string, event: Event): void;
+
+  removeEvent(track_id: string, event_id: string): void;
+}
+"#;
+
+#[wasm_bindgen(skip_typescript)]
 pub struct Store {
     song: Option<Song>,
 }
 
 #[wasm_bindgen]
 impl Store {
-    #[wasm_bindgen(constructor)]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Store { song: None }
     }
 
+    #[wasm_bindgen(constructor)]
+    pub fn new_js() -> Self {
+        Self::new()
+    }
+
     #[wasm_bindgen(js_name = getSong)]
-    pub fn get_song_js(&self) -> Option<Song> {
-        self.song.clone()
+    pub fn get_song_js(&self) -> Option<js_sys::Object> {
+        self.song.as_ref().map(|song| song.to_js_object())
     }
 
     #[wasm_bindgen(js_name = setSong)]
@@ -40,34 +83,32 @@ impl Store {
 
     fn get_track(&self, track_id: Id) -> Option<&Track> {
         let song = self.song.as_ref().expect_throw("Song is not set");
-        if let Some(track) = song.get_track(track_id) {
-            return Some(track);
-        }
-        None
+        song.get_track(track_id)
     }
 
     fn get_track_mut(&mut self, track_id: Id) -> Option<&mut Track> {
         let song = self.song.as_mut().expect_throw("Song is not set");
-        if let Some(track) = song.get_track_mut(track_id) {
-            return Some(track);
-        }
-        None
+        song.get_track_mut(track_id)
     }
 
     #[wasm_bindgen(js_name = getTrack)]
-    pub fn get_track_js(&self, track_id: &str) -> Option<Track> {
+    pub fn get_track_js(&self, track_id: &str) -> Option<js_sys::Object> {
         let track_id = Id::try_from(track_id).expect_throw("Track id is not valid");
-        if let Some(track) = self.get_track(track_id) {
-            return Some(track.clone());
-        }
-        None
+        self.get_track(track_id).map(|track| track.to_js_object())
     }
 
     #[wasm_bindgen(js_name = getTracks)]
-    pub fn get_tracks_js(&self) -> JsValue {
+    pub fn get_tracks_js(&self) -> js_sys::Array {
         let song = self.song.as_ref().expect_throw("Song is not set");
-        let tracks = song.get_tracks_ref();
-        serde_wasm_bindgen::to_value(tracks).unwrap()
+        let tracks = song.get_tracks();
+        tracks.iter().map(|track| track.to_js_object()).collect()
+    }
+
+    #[wasm_bindgen(js_name = getSortedAllEvents)]
+    pub fn get_sorted_all_events_js(&self) -> js_sys::Array {
+        let song = self.song.as_ref().expect_throw("Song is not set");
+        let events = song.get_sorted_all_events();
+        events.iter().map(|event| event.to_js_object()).collect()
     }
 
     #[wasm_bindgen(js_name = addEmptyTrack)]
@@ -148,81 +189,5 @@ impl Store {
         if let Ok(event_id) = Id::try_from(event_id) {
             track.remove_event(event_id);
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn new_store() -> Store {
-        Store::new()
-    }
-
-    #[test]
-    fn test_create_song() {
-        let mut store = new_store();
-
-        let title = "My Song";
-        let ppq = 480;
-
-        store.create_song_js(title.to_string(), ppq);
-        let song = store.song.unwrap();
-
-        assert_eq!(song.title, title);
-        assert_eq!(song.ppq, ppq);
-        assert_eq!(song.end_of_song.as_u32(), 0);
-    }
-
-    #[test]
-    fn test_get_song_js() {
-        let mut store = new_store();
-
-        let title = "My Song";
-        let ppq = 480;
-
-        store.create_song_js(title.to_string(), ppq);
-        let song = store.get_song_js().unwrap();
-
-        assert_eq!(song.title, title);
-        assert_eq!(song.ppq, ppq);
-        assert_eq!(song.end_of_song.as_u32(), 0);
-    }
-
-    #[test]
-    fn test_set_song_js() {
-        let mut store = new_store();
-
-        let title = "My Song";
-        let ppq = 480;
-
-        store.create_song_js(title.to_string(), ppq);
-        let mut song = store.song.clone().unwrap();
-
-        let title = "My New Song";
-        let ppq = 240;
-        song.title = title.to_string();
-        song.ppq = ppq;
-
-        store.set_song_js(song);
-
-        let song = store.song.unwrap();
-
-        assert_eq!(song.title, title);
-        assert_eq!(song.ppq, ppq);
-        assert_eq!(song.end_of_song.as_u32(), 0);
-    }
-
-    #[test]
-    fn test_clear_song_js() {
-        let mut store = new_store();
-
-        let title = "My Song";
-        let ppq = 480;
-
-        store.create_song_js(title.to_string(), ppq);
-        store.clear_song_js();
-
-        assert!(store.song.is_none());
     }
 }

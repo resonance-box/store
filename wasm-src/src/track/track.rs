@@ -9,37 +9,21 @@ use std::{
 };
 use wasm_bindgen::prelude::*;
 
-// #[wasm_bindgen(typescript_custom_section)]
-// const TS_TRACK_CLASS: &'static str = r#"
-// export class Track {
-//   free(): void;
+#[wasm_bindgen(typescript_custom_section)]
+const TS_TRACK_INTERFACE: &'static str = r#"
+export interface Track {
+  id: string;
+  events: Array<Event>;
+}
+"#;
 
-//   constructor();
-
-//   getEvent(event_id: string): Event | undefined;
-
-//   getSortedEvents(): Array<Event>;
-
-//   getSortedEventsInTicksRange(start_ticks: number, end_ticks: number): Array<Event>;
-
-//   addEvent(event: EventInput): void;
-
-//   updateEvent(event: EventUpdater): void;
-
-//   removeEvent(event_id: string): void;
-
-//   readonly id: string;
-// }
-// "#;
-
-// #[wasm_bindgen(skip_typescript)]
-#[wasm_bindgen]
+#[wasm_bindgen(skip_typescript)]
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Track {
     id: Id,
     events: HashMap<Id, Event>,
-    ticks_to_ids: BTreeMap<Ticks, HashSet<Id>>,
-    end_ticks_to_ids: BTreeMap<Ticks, HashSet<Id>>,
+    ticks_index: BTreeMap<Ticks, HashSet<Id>>,
+    end_ticks_index: BTreeMap<Ticks, HashSet<Id>>,
 }
 
 #[wasm_bindgen]
@@ -48,8 +32,8 @@ impl Track {
         Track {
             id: Id::new(),
             events: HashMap::new(),
-            ticks_to_ids: BTreeMap::new(),
-            end_ticks_to_ids: BTreeMap::new(),
+            ticks_index: BTreeMap::new(),
+            end_ticks_index: BTreeMap::new(),
         }
     }
 
@@ -62,7 +46,7 @@ impl Track {
     }
 
     pub(crate) fn get_sorted_events(&self) -> Vec<&Event> {
-        self.ticks_to_ids
+        self.ticks_index
             .iter()
             .map(|(_, ids)| ids.iter().filter_map(|id| self.events.get(id)))
             .flatten()
@@ -77,7 +61,7 @@ impl Track {
         let got_event_ids: RefCell<HashSet<Id>> = RefCell::new(HashSet::new());
 
         let events: Vec<&Event> = self
-            .ticks_to_ids
+            .ticks_index
             .range(start_ticks..=end_ticks)
             .map(|(_, ids)| {
                 ids.iter()
@@ -93,7 +77,7 @@ impl Track {
         let tick = Ticks::new(1);
 
         let mut has_duration_events: Vec<&Event> = self
-            .end_ticks_to_ids
+            .end_ticks_index
             .range((start_ticks + tick)..)
             .map(|(_, ids)| {
                 ids.iter()
@@ -133,14 +117,14 @@ impl Track {
 
         self.events.insert(id, event);
 
-        self.ticks_to_ids
+        self.ticks_index
             .entry(ticks)
             .or_insert_with(HashSet::new)
             .insert(id);
 
         if let Some(duration) = event.get_duration() {
             let end_ticks = ticks + duration;
-            self.end_ticks_to_ids
+            self.end_ticks_index
                 .entry(end_ticks)
                 .or_insert_with(HashSet::new)
                 .insert(id);
@@ -170,11 +154,35 @@ impl Track {
             .expect_throw(format!("Event with id {} does not exist", event_id.to_string()).as_str())
             .get_ticks();
 
-        if let Some(ids) = self.ticks_to_ids.get_mut(&ticks) {
+        if let Some(ids) = self.ticks_index.get_mut(&ticks) {
             ids.remove(&event_id);
         }
 
         self.events.remove(&event_id);
+    }
+
+    pub(crate) fn to_js_object(&self) -> js_sys::Object {
+        let js_event = js_sys::Object::new();
+
+        js_sys::Reflect::set(
+            &js_event,
+            &JsValue::from_str("id"),
+            &JsValue::from_str(&self.get_id().to_string()),
+        )
+        .unwrap();
+
+        js_sys::Reflect::set(
+            &js_event,
+            &JsValue::from_str("events"),
+            &self
+                .get_sorted_events()
+                .iter()
+                .map(|event| event.to_js_object())
+                .collect::<js_sys::Array>(),
+        )
+        .unwrap();
+
+        js_event
     }
 }
 
