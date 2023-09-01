@@ -27,7 +27,7 @@ export class Store {
 
   getSortedAllEvents(): Array<Event>;
 
-  getSortedAllEventsInTicksRange(startTicks: number, endTicks: number): Array<Event>;
+  getSortedAllEventsInTicksRange(startTicks: number, endTicks: number, withinDuration: boolean): Array<Event>;
 
   addEmptyTrack(): void;
 
@@ -37,7 +37,7 @@ export class Store {
 
   getSortedEvents(trackId: string): Array<Event>;
 
-  getSortedEventsInTicksRange(trackId: string, startTicks: number, endTicks: number): Array<Event>;
+  getSortedEventsInTicksRange(trackId: string, startTicks: number, endTicks: number, withinDuration: boolean): Array<Event>;
 
   addEvent(trackId: string, event: EventInput): void;
 
