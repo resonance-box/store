@@ -21,7 +21,7 @@ export class Store {
 
   clearSong(): void;
 
-  getTrack(track_id: string): Track | undefined;
+  getTrack(trackId: string): Track | undefined;
 
   getTracks(): Array<Track>;
 
@@ -29,19 +29,19 @@ export class Store {
 
   addEmptyTrack(): void;
 
-  removeTrack(track_id: string): void;
+  removeTrack(trackId: string): void;
 
-  getEvent(track_id: string, event_id: string): Event | undefined;
+  getEvent(trackId: string, eventId: string): Event | undefined;
 
-  getSortedEvents(track_id: string): Array<Event>;
+  getSortedEvents(trackId: string): Array<Event>;
 
-  getSortedEventsInTicksRange(track_id: string, start_ticks: number, end_ticks: number): Array<Track>;
+  getSortedEventsInTicksRange(trackId: string, startTicks: number, endTicks: number): Array<Track>;
 
-  addEvent(track_id: string, event: Event): void;
+  addEvent(trackId: string, event: EventInput): void;
 
-  updateEvent(track_id: string, event: Event): void;
+  updateEvent(trackId: string, event: EventUpdater): void;
 
-  removeEvent(track_id: string, event_id: string): void;
+  removeEvent(trackId: string, eventId: string): void;
 }
 "#;
 
