@@ -62,7 +62,7 @@ impl Track {
 
         let events: Vec<&Event> = self
             .ticks_index
-            .range(start_ticks..=end_ticks)
+            .range(start_ticks..end_ticks)
             .map(|(_, ids)| {
                 ids.iter()
                     .filter_map(|id| self.events.get(id))
@@ -240,7 +240,7 @@ mod tests {
         let event_1 = track.add_event(event_input_1);
 
         let event_input_2 = EventInput::Note(NoteInput {
-            ticks: Ticks::new(960),
+            ticks: Ticks::new(959),
             duration: Ticks::new(480),
             velocity: Velocity::new(100),
             note_number: NoteNumber::new(60),
@@ -288,7 +288,7 @@ mod tests {
         track.add_event(event_input_7);
 
         let event_input_8 = EventInput::Note(NoteInput {
-            ticks: Ticks::new(961),
+            ticks: Ticks::new(960),
             duration: Ticks::new(480),
             velocity: Velocity::new(100),
             note_number: NoteNumber::new(60),
