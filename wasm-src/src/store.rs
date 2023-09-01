@@ -118,10 +118,14 @@ impl Store {
         &self,
         start_ticks: u32,
         end_ticks: u32,
+        within_duration: bool,
     ) -> js_sys::Array {
         let song = self.song.as_ref().expect_throw("Song is not set");
-        let events = song
-            .get_sorted_all_events_in_ticks_range(Ticks::new(start_ticks), Ticks::new(end_ticks));
+        let events = song.get_sorted_all_events_in_ticks_range(
+            Ticks::new(start_ticks),
+            Ticks::new(end_ticks),
+            within_duration,
+        );
         events.iter().map(|event| event.to_js_object()).collect()
     }
 
@@ -170,11 +174,16 @@ impl Store {
         track_id: &str,
         start_ticks: u32,
         end_ticks: u32,
+        within_duration: bool,
     ) -> js_sys::Array {
         let track_id = Id::try_from(track_id).expect_throw("Track id is not valid");
         let track = self.get_track(track_id).expect_throw("Track not found");
         track
-            .get_sorted_events_in_ticks_range(Ticks::new(start_ticks), Ticks::new(end_ticks))
+            .get_sorted_events_in_ticks_range(
+                Ticks::new(start_ticks),
+                Ticks::new(end_ticks),
+                within_duration,
+            )
             .iter()
             .map(|event| event.to_js_object())
             .collect()

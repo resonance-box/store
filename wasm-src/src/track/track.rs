@@ -57,6 +57,7 @@ impl Track {
         &self,
         start_ticks: Ticks,
         end_ticks: Ticks,
+        within_duration: bool,
     ) -> Vec<&Event> {
         let got_event_ids: RefCell<HashSet<Id>> = RefCell::new(HashSet::new());
 
@@ -67,12 +68,18 @@ impl Track {
                 ids.iter()
                     .filter_map(|id| self.events.get(id))
                     .map(|event| {
-                        got_event_ids.borrow_mut().insert(event.get_id());
+                        if within_duration {
+                            got_event_ids.borrow_mut().insert(event.get_id());
+                        }
                         event
                     })
             })
             .flatten()
             .collect();
+
+        if !within_duration {
+            return events;
+        }
 
         let tick = Ticks::new(1);
 
@@ -228,7 +235,91 @@ mod tests {
     }
 
     #[test]
-    fn test_get_sorted_events_in_ticks_range() {
+    fn test_get_sorted_events_in_ticks_range_without_duration() {
+        let mut track = Track::new();
+
+        let event_input_1 = EventInput::Note(NoteInput {
+            ticks: Ticks::new(480),
+            duration: Ticks::new(480),
+            velocity: Velocity::new(100),
+            note_number: NoteNumber::new(60),
+        });
+        let event_1 = track.add_event(event_input_1);
+
+        let event_input_2 = EventInput::Note(NoteInput {
+            ticks: Ticks::new(959),
+            duration: Ticks::new(480),
+            velocity: Velocity::new(100),
+            note_number: NoteNumber::new(60),
+        });
+        let event_2 = track.add_event(event_input_2);
+
+        let event_input_3 = EventInput::Note(NoteInput {
+            ticks: Ticks::new(0),
+            duration: Ticks::new(240),
+            velocity: Velocity::new(100),
+            note_number: NoteNumber::new(60),
+        });
+        track.add_event(event_input_3);
+
+        let event_input_4 = EventInput::Note(NoteInput {
+            ticks: Ticks::new(240),
+            duration: Ticks::new(480),
+            velocity: Velocity::new(100),
+            note_number: NoteNumber::new(60),
+        });
+        track.add_event(event_input_4);
+
+        let event_input_5 = EventInput::Note(NoteInput {
+            ticks: Ticks::new(0),
+            duration: Ticks::new(480),
+            velocity: Velocity::new(100),
+            note_number: NoteNumber::new(60),
+        });
+        track.add_event(event_input_5);
+
+        let event_input_6 = EventInput::Note(NoteInput {
+            ticks: Ticks::new(0),
+            duration: Ticks::new(960),
+            velocity: Velocity::new(100),
+            note_number: NoteNumber::new(60),
+        });
+        track.add_event(event_input_6);
+
+        let event_input_7 = EventInput::Note(NoteInput {
+            ticks: Ticks::new(0),
+            duration: Ticks::new(479),
+            velocity: Velocity::new(100),
+            note_number: NoteNumber::new(60),
+        });
+        track.add_event(event_input_7);
+
+        let event_input_8 = EventInput::Note(NoteInput {
+            ticks: Ticks::new(960),
+            duration: Ticks::new(480),
+            velocity: Velocity::new(100),
+            note_number: NoteNumber::new(60),
+        });
+        track.add_event(event_input_8);
+
+        let event_input_9 = EventInput::Note(NoteInput {
+            ticks: Ticks::new(120),
+            duration: Ticks::new(1920),
+            velocity: Velocity::new(100),
+            note_number: NoteNumber::new(60),
+        });
+        track.add_event(event_input_9);
+
+        let got_events =
+            track.get_sorted_events_in_ticks_range(Ticks::new(480), Ticks::new(960), false);
+
+        assert_eq!(got_events.len(), 2);
+        assert_eq!(got_events[0].get_ticks(), event_1.get_ticks());
+        assert_eq!(got_events[1].get_ticks(), event_2.get_ticks());
+    }
+
+    #[test]
+    fn test_get_sorted_events_in_ticks_range_within_duration() {
         let mut track = Track::new();
 
         let event_input_1 = EventInput::Note(NoteInput {
@@ -303,7 +394,8 @@ mod tests {
         });
         let event_9 = track.add_event(event_input_9);
 
-        let got_events = track.get_sorted_events_in_ticks_range(Ticks::new(480), Ticks::new(960));
+        let got_events =
+            track.get_sorted_events_in_ticks_range(Ticks::new(480), Ticks::new(960), true);
 
         assert_eq!(got_events.len(), 5);
         assert_eq!(got_events[0].get_ticks(), event_6.get_ticks());
