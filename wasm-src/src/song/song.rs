@@ -46,13 +46,16 @@ impl Song {
         self.tracks.iter_mut().find(|t| t.get_id() == track_id)
     }
 
-    pub(crate) fn get_sorted_all_events(&self) -> Vec<&Event> {
+    fn merge_events_each_track<F>(&self, get_sorted_events_fn: F) -> Vec<&Event>
+    where
+        F: Fn(&Track) -> Vec<&Event>,
+    {
         let mut events = Vec::new();
 
         let mut events_each_track: Vec<_> = self
             .tracks
             .iter()
-            .map(|t| t.get_sorted_events().into_iter())
+            .map(|t| get_sorted_events_fn(t).into_iter())
             .collect();
 
         let mut current_event_caches: Vec<Option<&Event>> = vec![None; events_each_track.len()];
@@ -87,6 +90,18 @@ impl Song {
         }
 
         events
+    }
+
+    pub(crate) fn get_sorted_all_events(&self) -> Vec<&Event> {
+        self.merge_events_each_track(|t| t.get_sorted_events())
+    }
+
+    pub(crate) fn get_sorted_all_events_in_ticks_range(
+        &self,
+        start_ticks: Ticks,
+        end_ticks: Ticks,
+    ) -> Vec<&Event> {
+        self.merge_events_each_track(|t| t.get_sorted_events_in_ticks_range(start_ticks, end_ticks))
     }
 
     pub(crate) fn add_track(&mut self, track: Track) {
@@ -241,6 +256,59 @@ mod tests {
         assert_eq!(events[2].get_ticks().as_u32(), 480);
         assert_eq!(events[3].get_ticks().as_u32(), 720);
         assert_eq!(events[4].get_ticks().as_u32(), 960);
+    }
+
+    #[test]
+    fn test_get_sorted_all_events_in_ticks_range() {
+        let mut song = Song::new("test".to_string(), 480);
+
+        let mut track1 = Track::new();
+        let mut track2 = Track::new();
+        let mut track3 = Track::new();
+
+        track1.add_event(EventInput::Note(NoteInput {
+            ticks: Ticks::new(480),
+            duration: Ticks::new(480),
+            velocity: Velocity::new(100),
+            note_number: NoteNumber::new(60),
+        }));
+
+        track1.add_event(EventInput::Note(NoteInput {
+            ticks: Ticks::new(240),
+            duration: Ticks::new(480),
+            velocity: Velocity::new(100),
+            note_number: NoteNumber::new(60),
+        }));
+
+        track2.add_event(EventInput::Note(NoteInput {
+            ticks: Ticks::new(0),
+            duration: Ticks::new(480),
+            velocity: Velocity::new(100),
+            note_number: NoteNumber::new(60),
+        }));
+
+        track2.add_event(EventInput::Note(NoteInput {
+            ticks: Ticks::new(960),
+            duration: Ticks::new(480),
+            velocity: Velocity::new(100),
+            note_number: NoteNumber::new(60),
+        }));
+
+        track3.add_event(EventInput::Note(NoteInput {
+            ticks: Ticks::new(720),
+            duration: Ticks::new(480),
+            velocity: Velocity::new(100),
+            note_number: NoteNumber::new(60),
+        }));
+
+        song.tracks = vec![track1, track2, track3];
+
+        let events = song.get_sorted_all_events_in_ticks_range(Ticks::new(480), Ticks::new(960));
+
+        assert_eq!(events.len(), 3);
+        assert_eq!(events[0].get_ticks().as_u32(), 240);
+        assert_eq!(events[1].get_ticks().as_u32(), 480);
+        assert_eq!(events[2].get_ticks().as_u32(), 720);
     }
 
     #[test]

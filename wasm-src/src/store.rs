@@ -27,6 +27,8 @@ export class Store {
 
   getSortedAllEvents(): Array<Event>;
 
+  getSortedAllEventsInTicksRange(startTicks: number, endTicks: number): Array<Event>;
+
   addEmptyTrack(): void;
 
   removeTrack(trackId: string): void;
@@ -35,7 +37,7 @@ export class Store {
 
   getSortedEvents(trackId: string): Array<Event>;
 
-  getSortedEventsInTicksRange(trackId: string, startTicks: number, endTicks: number): Array<Track>;
+  getSortedEventsInTicksRange(trackId: string, startTicks: number, endTicks: number): Array<Event>;
 
   addEvent(trackId: string, event: EventInput): void;
 
@@ -108,6 +110,18 @@ impl Store {
     pub fn get_sorted_all_events_js(&self) -> js_sys::Array {
         let song = self.song.as_ref().expect_throw("Song is not set");
         let events = song.get_sorted_all_events();
+        events.iter().map(|event| event.to_js_object()).collect()
+    }
+
+    #[wasm_bindgen(js_name = getSortedAllEventsInTicksRange)]
+    pub fn get_sorted_all_events_in_ticks_range_js(
+        &self,
+        start_ticks: u32,
+        end_ticks: u32,
+    ) -> js_sys::Array {
+        let song = self.song.as_ref().expect_throw("Song is not set");
+        let events = song
+            .get_sorted_all_events_in_ticks_range(Ticks::new(start_ticks), Ticks::new(end_ticks));
         events.iter().map(|event| event.to_js_object()).collect()
     }
 
