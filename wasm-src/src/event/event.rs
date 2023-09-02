@@ -1,4 +1,4 @@
-use super::note::{Note, NoteInput, NoteNumber, NoteUpdater, Velocity};
+use super::note::{Note, NoteInput, NoteUpdater};
 use crate::shared::{id::Id, unit::time::Ticks};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
@@ -105,40 +105,7 @@ impl Event {
 
     pub(crate) fn to_js_object(&self) -> js_sys::Object {
         match self {
-            Event::Note(note) => {
-                let js_event = js_sys::Object::new();
-                js_sys::Reflect::set(
-                    &js_event,
-                    &JsValue::from_str("id"),
-                    &JsValue::from_str(note.id.to_string().as_str()),
-                )
-                .unwrap();
-                js_sys::Reflect::set(
-                    &js_event,
-                    &JsValue::from_str("ticks"),
-                    &JsValue::from_f64(note.ticks.as_u32() as f64),
-                )
-                .unwrap();
-                js_sys::Reflect::set(
-                    &js_event,
-                    &JsValue::from_str("duration"),
-                    &JsValue::from_f64(note.duration.as_u32() as f64),
-                )
-                .unwrap();
-                js_sys::Reflect::set(
-                    &js_event,
-                    &JsValue::from_str("velocity"),
-                    &JsValue::from_f64(note.velocity.as_u8() as f64),
-                )
-                .unwrap();
-                js_sys::Reflect::set(
-                    &js_event,
-                    &JsValue::from_str("noteNumber"),
-                    &JsValue::from_f64(note.note_number.as_u8() as f64),
-                )
-                .unwrap();
-                js_event
-            }
+            Event::Note(note) => note.to_js_object(),
         }
     }
 }
@@ -150,11 +117,6 @@ pub(crate) enum EventInput {
 
 impl EventInput {
     pub(crate) fn from_js_object(obj: js_sys::Object) -> Self {
-        let ticks = js_sys::Reflect::get(&obj, &JsValue::from_str("ticks"))
-            .unwrap()
-            .as_f64()
-            .unwrap();
-
         let kind = js_sys::Reflect::get(&obj, &JsValue::from_str("kind"))
             .unwrap()
             .as_string()
@@ -162,29 +124,7 @@ impl EventInput {
         let kind = EventKind::from_str(&kind).unwrap();
 
         match kind {
-            EventKind::Note => {
-                let duration = js_sys::Reflect::get(&obj, &JsValue::from_str("duration"))
-                    .unwrap()
-                    .as_f64()
-                    .unwrap();
-                let velocity = js_sys::Reflect::get(&obj, &JsValue::from_str("velocity"))
-                    .unwrap()
-                    .as_f64()
-                    .unwrap();
-                let note_number = js_sys::Reflect::get(&obj, &JsValue::from_str("noteNumber"))
-                    .unwrap()
-                    .as_f64()
-                    .unwrap();
-
-                let note = NoteInput {
-                    ticks: Ticks::new(ticks as u32),
-                    duration: Ticks::new(duration as u32),
-                    velocity: Velocity::new(velocity as u8),
-                    note_number: NoteNumber::new(note_number as u8),
-                };
-
-                EventInput::Note(note)
-            }
+            EventKind::Note => EventInput::Note(NoteInput::from_js_object(obj)),
             _ => panic!("Unknown event kind: {}", kind),
         }
     }
@@ -203,14 +143,6 @@ impl EventUpdater {
     }
 
     pub(crate) fn from_js_object(obj: js_sys::Object) -> Self {
-        let id = js_sys::Reflect::get(&obj, &JsValue::from_str("id"))
-            .unwrap()
-            .as_string()
-            .unwrap();
-        let ticks = js_sys::Reflect::get(&obj, &JsValue::from_str("ticks"))
-            .unwrap()
-            .as_f64();
-
         let kind = js_sys::Reflect::get(&obj, &JsValue::from_str("kind"))
             .unwrap()
             .as_string()
@@ -218,27 +150,7 @@ impl EventUpdater {
         let kind = EventKind::from_str(&kind).unwrap();
 
         match kind {
-            EventKind::Note => {
-                let duration = js_sys::Reflect::get(&obj, &JsValue::from_str("duration"))
-                    .unwrap()
-                    .as_f64();
-                let velocity = js_sys::Reflect::get(&obj, &JsValue::from_str("velocity"))
-                    .unwrap()
-                    .as_f64();
-                let note_number = js_sys::Reflect::get(&obj, &JsValue::from_str("noteNumber"))
-                    .unwrap()
-                    .as_f64();
-
-                let note = NoteUpdater {
-                    id: Id::try_from(id.as_str()).unwrap(),
-                    ticks: ticks.map(|t| Ticks::new(t as u32)),
-                    duration: duration.map(|d| Ticks::new(d as u32)),
-                    velocity: velocity.map(|v| Velocity::new(v as u8)),
-                    note_number: note_number.map(|n| NoteNumber::new(n as u8)),
-                };
-
-                EventUpdater::Note(note)
-            }
+            EventKind::Note => EventUpdater::Note(NoteUpdater::from_js_object(obj)),
             _ => panic!("Unknown event kind: {}", kind),
         }
     }
