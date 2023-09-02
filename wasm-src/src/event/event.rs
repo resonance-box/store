@@ -11,7 +11,7 @@ export interface Note {
   ticks: number;
   duration: number;
   velocity: number;
-  noteNumber: number;    
+  noteNumber: number;
 }
 
 export interface NoteInput {
@@ -19,7 +19,7 @@ export interface NoteInput {
   ticks: number;
   duration: number;
   velocity: number;
-  noteNumber: number;    
+  noteNumber: number;
 }
 
 export interface NoteUpdater {
@@ -28,7 +28,7 @@ export interface NoteUpdater {
   ticks?: number;
   duration?: number;
   velocity?: number;
-  noteNumber?: number;    
+  noteNumber?: number;
 }
 
 export type Event = Note;
