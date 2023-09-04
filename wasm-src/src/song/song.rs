@@ -63,7 +63,16 @@ impl Song {
 
     pub(crate) fn remove_track(&mut self, track_id: Id) {
         if let Some(index) = self.track_ids.iter().position(|&id| id == track_id) {
+            if let Some(event_ids) = self.event_ids_each_track.get(&track_id) {
+                for event_id in event_ids {
+                    self.events.remove(&event_id);
+                }
+            }
+
             self.track_ids.remove(index);
+            self.event_ids_each_track.remove(&track_id);
+            self.ticks_index_each_track.remove(&track_id);
+            self.end_ticks_index_each_track.remove(&track_id);
         }
     }
 
@@ -411,14 +420,12 @@ impl Song {
 }
 
 #[cfg(test)]
-#[allow(soft_unstable)]
 mod tests {
     use super::*;
     use crate::event::{
         event::EventInput,
         note::{NoteInput, NoteNumber, Velocity},
     };
-    use test::Bencher;
 
     #[test]
     fn test_song() {
