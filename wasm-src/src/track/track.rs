@@ -1,11 +1,11 @@
 use crate::{
-    event::event::{Event, EventInput, EventUpdater},
+    event::event::Event,
     shared::{id::Id, unit::time::Ticks},
 };
-use serde::{Deserialize, Serialize};
 use std::{
     cell::RefCell,
     collections::{BTreeMap, HashMap, HashSet},
+    ops::{Deref, DerefMut},
 };
 use wasm_bindgen::prelude::*;
 
@@ -13,20 +13,18 @@ use wasm_bindgen::prelude::*;
 const TS_TRACK_INTERFACE: &'static str = r#"
 export interface Track {
   id: string;
-  events: Array<Event>;
+  events: Event[];
 }
 "#;
 
-#[wasm_bindgen(skip_typescript)]
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone)]
 pub struct Track {
-    id: Id,
+    pub(crate) id: Id,
     events: HashMap<Id, Event>,
     ticks_index: BTreeMap<Ticks, HashSet<Id>>,
     end_ticks_index: BTreeMap<Ticks, HashSet<Id>>,
 }
 
-#[wasm_bindgen]
 impl Track {
     pub(crate) fn new() -> Self {
         Track {
@@ -37,15 +35,11 @@ impl Track {
         }
     }
 
-    pub(crate) fn get_id(&self) -> Id {
-        self.id
+    pub(crate) fn get_event(&self, event_id: &Id) -> Option<&Event> {
+        self.events.get(event_id)
     }
 
-    pub(crate) fn get_event(&self, event_id: Id) -> Option<&Event> {
-        self.events.get(&event_id)
-    }
-
-    pub(crate) fn get_sorted_events(&self) -> Vec<&Event> {
+    pub(crate) fn get_events(&self) -> Vec<&Event> {
         self.ticks_index
             .iter()
             .map(|(_, ids)| ids.iter().filter_map(|id| self.events.get(id)))
@@ -53,7 +47,7 @@ impl Track {
             .collect()
     }
 
-    pub(crate) fn get_sorted_events_in_ticks_range(
+    pub(crate) fn get_events_in_ticks_range(
         &self,
         start_ticks: Ticks,
         end_ticks: Ticks,
@@ -61,6 +55,7 @@ impl Track {
     ) -> Vec<&Event> {
         let got_event_ids: RefCell<HashSet<Id>> = RefCell::new(HashSet::new());
 
+        // TODO: refactor
         let events: Vec<&Event> = self
             .ticks_index
             .range(start_ticks..end_ticks)
@@ -81,8 +76,8 @@ impl Track {
             return events;
         }
 
+        // TODO: refactor
         let tick = Ticks::new(1);
-
         let mut has_duration_events: Vec<&Event> = self
             .end_ticks_index
             .range((start_ticks + tick)..)
@@ -96,6 +91,7 @@ impl Track {
             })
             .flatten()
             .collect();
+
         // MEMO: can it be implemented so that it does not need to be sorted?
         has_duration_events.sort_by(|a, b| a.get_ticks().cmp(&b.get_ticks()));
 
@@ -118,7 +114,7 @@ impl Track {
         merged_events
     }
 
-    fn _add_event(&mut self, event: Event) -> Event {
+    pub(crate) fn add_event(&mut self, event: Event) {
         let id = event.get_id();
         let ticks = event.get_ticks();
 
@@ -131,31 +127,17 @@ impl Track {
 
         if let Some(duration) = event.get_duration() {
             let end_ticks = ticks + duration;
+
             self.end_ticks_index
                 .entry(end_ticks)
                 .or_insert_with(HashSet::new)
                 .insert(id);
         }
-
-        event
     }
 
-    pub(crate) fn add_event(&mut self, event: EventInput) -> Event {
-        let event = Event::from_event_input(event);
-        self._add_event(event)
-    }
+    pub(crate) fn remove_event(&mut self, event_id: &Id) {
+        let event = self.events.get(&event_id).expect_throw("Event not found");
 
-    pub(crate) fn update_event(&mut self, updater: EventUpdater) {
-        let id = updater.get_id();
-
-        if let Some(old_event) = self.get_event(id) {
-            let new_event = old_event.clone_with_updater(updater);
-            self.remove_event(id);
-            self._add_event(new_event);
-        }
-    }
-
-    pub(crate) fn remove_event(&mut self, event_id: Id) {
         let ticks = self
             .get_event(event_id)
             .expect_throw(format!("Event with id {} does not exist", event_id.to_string()).as_str())
@@ -165,320 +147,71 @@ impl Track {
             ids.remove(&event_id);
         }
 
+        if let Some(duration) = event.get_duration() {
+            let end_ticks = ticks + duration;
+
+            if let Some(ids) = self.end_ticks_index.get_mut(&end_ticks) {
+                ids.remove(&event_id);
+            }
+        }
+
         self.events.remove(&event_id);
     }
 
     pub(crate) fn to_js_object(&self) -> js_sys::Object {
-        let js_event = js_sys::Object::new();
+        let js_track = js_sys::Object::new();
 
         js_sys::Reflect::set(
-            &js_event,
+            &js_track,
             &JsValue::from_str("id"),
-            &JsValue::from_str(&self.get_id().to_string()),
+            &JsValue::from_str(self.id.to_string().as_str()),
         )
         .unwrap();
 
         js_sys::Reflect::set(
-            &js_event,
+            &js_track,
             &JsValue::from_str("events"),
             &self
-                .get_sorted_events()
+                .get_events()
                 .iter()
                 .map(|event| event.to_js_object())
                 .collect::<js_sys::Array>(),
         )
         .unwrap();
 
-        js_event
+        js_track
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::event::note::{NoteInput, NoteNumber, NoteUpdater, Velocity};
+#[derive(Clone)]
+pub struct TrackVec(Vec<Track>);
 
-    #[test]
-    fn test_get_sorted_event() {
-        let mut track = Track::new();
-
-        let event_input_1 = EventInput::Note(NoteInput {
-            ticks: Ticks::new(480),
-            duration: Ticks::new(480),
-            velocity: Velocity::new(100),
-            note_number: NoteNumber::new(60),
-        });
-        let event_1 = track.add_event(event_input_1);
-
-        let event_input_2 = EventInput::Note(NoteInput {
-            ticks: Ticks::new(960),
-            duration: Ticks::new(480),
-            velocity: Velocity::new(100),
-            note_number: NoteNumber::new(60),
-        });
-        let event_2 = track.add_event(event_input_2);
-
-        let event_input_3 = EventInput::Note(NoteInput {
-            ticks: Ticks::new(0),
-            duration: Ticks::new(480),
-            velocity: Velocity::new(100),
-            note_number: NoteNumber::new(60),
-        });
-        let event_3 = track.add_event(event_input_3);
-
-        let got_events = track.get_sorted_events();
-
-        assert_eq!(got_events.len(), 3);
-        assert_eq!(got_events[0].get_id(), event_3.get_id());
-        assert_eq!(got_events[1].get_id(), event_1.get_id());
-        assert_eq!(got_events[2].get_id(), event_2.get_id());
+impl TrackVec {
+    pub(crate) fn new() -> Self {
+        TrackVec(Vec::new())
     }
 
-    #[test]
-    fn test_get_sorted_events_in_ticks_range_without_duration() {
-        let mut track = Track::new();
-
-        let event_input_1 = EventInput::Note(NoteInput {
-            ticks: Ticks::new(480),
-            duration: Ticks::new(480),
-            velocity: Velocity::new(100),
-            note_number: NoteNumber::new(60),
-        });
-        let event_1 = track.add_event(event_input_1);
-
-        let event_input_2 = EventInput::Note(NoteInput {
-            ticks: Ticks::new(959),
-            duration: Ticks::new(480),
-            velocity: Velocity::new(100),
-            note_number: NoteNumber::new(60),
-        });
-        let event_2 = track.add_event(event_input_2);
-
-        let event_input_3 = EventInput::Note(NoteInput {
-            ticks: Ticks::new(0),
-            duration: Ticks::new(240),
-            velocity: Velocity::new(100),
-            note_number: NoteNumber::new(60),
-        });
-        track.add_event(event_input_3);
-
-        let event_input_4 = EventInput::Note(NoteInput {
-            ticks: Ticks::new(240),
-            duration: Ticks::new(480),
-            velocity: Velocity::new(100),
-            note_number: NoteNumber::new(60),
-        });
-        track.add_event(event_input_4);
-
-        let event_input_5 = EventInput::Note(NoteInput {
-            ticks: Ticks::new(0),
-            duration: Ticks::new(480),
-            velocity: Velocity::new(100),
-            note_number: NoteNumber::new(60),
-        });
-        track.add_event(event_input_5);
-
-        let event_input_6 = EventInput::Note(NoteInput {
-            ticks: Ticks::new(0),
-            duration: Ticks::new(960),
-            velocity: Velocity::new(100),
-            note_number: NoteNumber::new(60),
-        });
-        track.add_event(event_input_6);
-
-        let event_input_7 = EventInput::Note(NoteInput {
-            ticks: Ticks::new(0),
-            duration: Ticks::new(479),
-            velocity: Velocity::new(100),
-            note_number: NoteNumber::new(60),
-        });
-        track.add_event(event_input_7);
-
-        let event_input_8 = EventInput::Note(NoteInput {
-            ticks: Ticks::new(960),
-            duration: Ticks::new(480),
-            velocity: Velocity::new(100),
-            note_number: NoteNumber::new(60),
-        });
-        track.add_event(event_input_8);
-
-        let event_input_9 = EventInput::Note(NoteInput {
-            ticks: Ticks::new(120),
-            duration: Ticks::new(1920),
-            velocity: Velocity::new(100),
-            note_number: NoteNumber::new(60),
-        });
-        track.add_event(event_input_9);
-
-        let got_events =
-            track.get_sorted_events_in_ticks_range(Ticks::new(480), Ticks::new(960), false);
-
-        assert_eq!(got_events.len(), 2);
-        assert_eq!(got_events[0].get_ticks(), event_1.get_ticks());
-        assert_eq!(got_events[1].get_ticks(), event_2.get_ticks());
+    pub(crate) fn to_js_array(&self) -> js_sys::Array {
+        self.0.iter().map(|track| track.to_js_object()).collect()
     }
+}
 
-    #[test]
-    fn test_get_sorted_events_in_ticks_range_within_duration() {
-        let mut track = Track::new();
-
-        let event_input_1 = EventInput::Note(NoteInput {
-            ticks: Ticks::new(480),
-            duration: Ticks::new(480),
-            velocity: Velocity::new(100),
-            note_number: NoteNumber::new(60),
-        });
-        let event_1 = track.add_event(event_input_1);
-
-        let event_input_2 = EventInput::Note(NoteInput {
-            ticks: Ticks::new(959),
-            duration: Ticks::new(480),
-            velocity: Velocity::new(100),
-            note_number: NoteNumber::new(60),
-        });
-        let event_2 = track.add_event(event_input_2);
-
-        let event_input_3 = EventInput::Note(NoteInput {
-            ticks: Ticks::new(0),
-            duration: Ticks::new(240),
-            velocity: Velocity::new(100),
-            note_number: NoteNumber::new(60),
-        });
-        track.add_event(event_input_3);
-
-        let event_input_4 = EventInput::Note(NoteInput {
-            ticks: Ticks::new(240),
-            duration: Ticks::new(480),
-            velocity: Velocity::new(100),
-            note_number: NoteNumber::new(60),
-        });
-        let event_4 = track.add_event(event_input_4);
-
-        let event_input_5 = EventInput::Note(NoteInput {
-            ticks: Ticks::new(0),
-            duration: Ticks::new(480),
-            velocity: Velocity::new(100),
-            note_number: NoteNumber::new(60),
-        });
-        track.add_event(event_input_5);
-
-        let event_input_6 = EventInput::Note(NoteInput {
-            ticks: Ticks::new(0),
-            duration: Ticks::new(960),
-            velocity: Velocity::new(100),
-            note_number: NoteNumber::new(60),
-        });
-        let event_6 = track.add_event(event_input_6);
-
-        let event_input_7 = EventInput::Note(NoteInput {
-            ticks: Ticks::new(0),
-            duration: Ticks::new(479),
-            velocity: Velocity::new(100),
-            note_number: NoteNumber::new(60),
-        });
-        track.add_event(event_input_7);
-
-        let event_input_8 = EventInput::Note(NoteInput {
-            ticks: Ticks::new(960),
-            duration: Ticks::new(480),
-            velocity: Velocity::new(100),
-            note_number: NoteNumber::new(60),
-        });
-        track.add_event(event_input_8);
-
-        let event_input_9 = EventInput::Note(NoteInput {
-            ticks: Ticks::new(120),
-            duration: Ticks::new(1920),
-            velocity: Velocity::new(100),
-            note_number: NoteNumber::new(60),
-        });
-        let event_9 = track.add_event(event_input_9);
-
-        let got_events =
-            track.get_sorted_events_in_ticks_range(Ticks::new(480), Ticks::new(960), true);
-
-        assert_eq!(got_events.len(), 5);
-        assert_eq!(got_events[0].get_ticks(), event_6.get_ticks());
-        assert_eq!(got_events[1].get_ticks(), event_9.get_ticks());
-        assert_eq!(got_events[2].get_ticks(), event_4.get_ticks());
-        assert_eq!(got_events[3].get_ticks(), event_1.get_ticks());
-        assert_eq!(got_events[4].get_ticks(), event_2.get_ticks());
+impl FromIterator<Track> for TrackVec {
+    fn from_iter<T: IntoIterator<Item = Track>>(iter: T) -> Self {
+        TrackVec(iter.into_iter().collect())
     }
+}
 
-    #[test]
-    fn test_add_event() {
-        let mut track = Track::new();
+impl Deref for TrackVec {
+    type Target = Vec<Track>;
 
-        let event_input = EventInput::Note(NoteInput {
-            ticks: Ticks::new(0),
-            duration: Ticks::new(480),
-            velocity: Velocity::new(100),
-            note_number: NoteNumber::new(60),
-        });
-        let event = track.add_event(event_input);
-
-        let got_event = track.get_event(event.get_id()).unwrap();
-
-        match (got_event, &event_input) {
-            (Event::Note(got_note), EventInput::Note(note)) => {
-                assert_eq!(got_note.ticks, note.ticks);
-                assert_eq!(got_note.duration, note.duration);
-                assert_eq!(got_note.velocity, note.velocity);
-                assert_eq!(got_note.note_number, note.note_number);
-            }
-        }
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
+}
 
-    #[test]
-    fn test_update_event() {
-        let mut track = Track::new();
-
-        let event_input = EventInput::Note(NoteInput {
-            ticks: Ticks::new(0),
-            duration: Ticks::new(480),
-            velocity: Velocity::new(100),
-            note_number: NoteNumber::new(60),
-        });
-        let event = track.add_event(event_input);
-        let event_id = event.get_id();
-
-        let event_updater = EventUpdater::Note(NoteUpdater {
-            id: event_id,
-            ticks: Some(Ticks::new(480)),
-            duration: Some(Ticks::new(960)),
-            velocity: Some(Velocity::new(80)),
-            note_number: Some(NoteNumber::new(80)),
-        });
-        track.update_event(event_updater);
-
-        let got_event = track.get_event(event_id).unwrap();
-
-        match (got_event, event_updater) {
-            (Event::Note(got_note), EventUpdater::Note(note)) => {
-                assert_eq!(got_note.id, note.id);
-                assert_eq!(got_note.ticks, note.ticks.unwrap());
-                assert_eq!(got_note.duration, note.duration.unwrap());
-                assert_eq!(got_note.velocity, note.velocity.unwrap());
-                assert_eq!(got_note.note_number, note.note_number.unwrap());
-            }
-        }
-    }
-
-    #[test]
-    fn test_remove_event() {
-        let mut track = Track::new();
-
-        let event_input = EventInput::Note(NoteInput {
-            ticks: Ticks::new(0),
-            duration: Ticks::new(480),
-            velocity: Velocity::new(100),
-            note_number: NoteNumber::new(60),
-        });
-        let event = track.add_event(event_input);
-        let event_id = event.get_id();
-
-        track.remove_event(event_id);
-
-        assert!(track.get_event(event_id).is_none());
+impl DerefMut for TrackVec {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }

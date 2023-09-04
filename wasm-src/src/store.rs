@@ -2,7 +2,6 @@ use crate::{
     event::event::{EventInput, EventUpdater},
     shared::{id::Id, unit::time::Ticks},
     song::song::Song,
-    track::track::Track,
 };
 use wasm_bindgen::prelude::*;
 
@@ -15,35 +14,29 @@ export class Store {
 
   getSong(): Song | undefined;
 
-  setSong(song: Song): void;
-
   createSong(title: string, ppq: number): void;
 
   clearSong(): void;
 
   getTrack(trackId: string): Track | undefined;
 
-  getTracks(): Array<Track>;
+  getTracks(): Track[];
 
-  getSortedAllEvents(): Array<Event>;
-
-  getSortedAllEventsInTicksRange(startTicks: number, endTicks: number, withinDuration: boolean): Array<Event>;
-
-  addEmptyTrack(): void;
+  addEmptyTrack(): Track;
 
   removeTrack(trackId: string): void;
 
-  getEvent(trackId: string, eventId: string): Event | undefined;
+  getEvent(eventId: string): Event | undefined;
 
-  getSortedEvents(trackId: string): Array<Event>;
+  getEvents(): Event[];
 
-  getSortedEventsInTicksRange(trackId: string, startTicks: number, endTicks: number, withinDuration: boolean): Array<Event>;
+  getEventsInTicksRange(startTicks: number, endTicks: number, withinDuration: boolean): Event[];
 
-  addEvent(trackId: string, event: EventInput): void;
+  addEvent(event: EventInput): Event;
 
-  updateEvent(trackId: string, event: EventUpdater): void;
+  updateEvent(event: EventUpdater): Event;
 
-  removeEvent(trackId: string, eventId: string): void;
+  removeEvent(eventId: string): void;
 }
 "#;
 
@@ -68,11 +61,6 @@ impl Store {
         self.song.as_ref().map(|song| song.to_js_object())
     }
 
-    #[wasm_bindgen(js_name = setSong)]
-    pub fn set_song_js(&mut self, song: Song) {
-        self.song = Some(song);
-    }
-
     #[wasm_bindgen(js_name = createSong)]
     pub fn create_song_js(&mut self, title: String, ppq: u32) {
         self.song = Some(Song::new(title, ppq));
@@ -83,134 +71,86 @@ impl Store {
         self.song = None;
     }
 
-    fn get_track(&self, track_id: Id) -> Option<&Track> {
-        let song = self.song.as_ref().expect_throw("Song is not set");
-        song.get_track(track_id)
-    }
-
-    fn get_track_mut(&mut self, track_id: Id) -> Option<&mut Track> {
-        let song = self.song.as_mut().expect_throw("Song is not set");
-        song.get_track_mut(track_id)
-    }
-
     #[wasm_bindgen(js_name = getTrack)]
     pub fn get_track_js(&self, track_id: &str) -> Option<js_sys::Object> {
+        let song = self.song.as_ref().expect_throw("Song is not set");
         let track_id = Id::try_from(track_id).expect_throw("Track id is not valid");
-        self.get_track(track_id).map(|track| track.to_js_object())
+        let track = song.get_track(&track_id);
+        track.map(|track| track.to_js_object())
     }
 
     #[wasm_bindgen(js_name = getTracks)]
     pub fn get_tracks_js(&self) -> js_sys::Array {
         let song = self.song.as_ref().expect_throw("Song is not set");
         let tracks = song.get_tracks();
-        tracks.iter().map(|track| track.to_js_object()).collect()
-    }
-
-    #[wasm_bindgen(js_name = getSortedAllEvents)]
-    pub fn get_sorted_all_events_js(&self) -> js_sys::Array {
-        let song = self.song.as_ref().expect_throw("Song is not set");
-        let events = song.get_sorted_all_events();
-        events.iter().map(|event| event.to_js_object()).collect()
-    }
-
-    #[wasm_bindgen(js_name = getSortedAllEventsInTicksRange)]
-    pub fn get_sorted_all_events_in_ticks_range_js(
-        &self,
-        start_ticks: u32,
-        end_ticks: u32,
-        within_duration: bool,
-    ) -> js_sys::Array {
-        let song = self.song.as_ref().expect_throw("Song is not set");
-        let events = song.get_sorted_all_events_in_ticks_range(
-            Ticks::new(start_ticks),
-            Ticks::new(end_ticks),
-            within_duration,
-        );
-        events.iter().map(|event| event.to_js_object()).collect()
+        tracks.to_js_array()
     }
 
     #[wasm_bindgen(js_name = addEmptyTrack)]
-    pub fn add_empty_track_js(&mut self) {
+    pub fn add_empty_track_js(&mut self) -> js_sys::Object {
         let song = self.song.as_mut().expect_throw("Song is not set");
-        song.add_track(Track::new());
+        song.add_empty_track().to_js_object()
     }
 
     #[wasm_bindgen(js_name = removeTrack)]
     pub fn remove_track_js(&mut self, track_id: &str) {
         let track_id = Id::try_from(track_id).expect_throw("Track id is not valid");
         let song = self.song.as_mut().expect_throw("Song is not set");
-        song.remove_track(track_id);
+        song.remove_track(&track_id);
     }
 
     #[wasm_bindgen(js_name = getEvent)]
-    pub fn get_event_js(&self, track_id: &str, event_id: &str) -> Option<js_sys::Object> {
-        let track_id = Id::try_from(track_id).expect_throw("Track id is not valid");
-        let track = self.get_track(track_id).expect_throw("Track not found");
-        if let Ok(event_id) = Id::try_from(event_id) {
-            if let Some(event) = track.get_event(event_id) {
-                Some(event.to_js_object())
-            } else {
-                None
-            }
-        } else {
-            None
-        }
+    pub fn get_event_js(&self, event_id: &str) -> Option<js_sys::Object> {
+        let song = self.song.as_ref().expect_throw("Song is not set");
+        let event_id = Id::try_from(event_id).expect_throw("Event id is not valid");
+        let event = song.get_event(&event_id);
+        event.map(|event| event.to_js_object())
     }
 
-    #[wasm_bindgen(js_name = getSortedEvents)]
-    pub fn get_sorted_events_js(&self, track_id: &str) -> js_sys::Array {
-        let track_id = Id::try_from(track_id).expect_throw("Track id is not valid");
-        let track = self.get_track(track_id).expect_throw("Track not found");
-        track
-            .get_sorted_events()
-            .iter()
-            .map(|event| event.to_js_object())
-            .collect()
+    #[wasm_bindgen(js_name = getEvents)]
+    pub fn get_events_js(&self) -> js_sys::Array {
+        let song = self.song.as_ref().expect_throw("Song is not set");
+        let events = song.get_events(None); // TODO: None
+        events.iter().map(|event| event.to_js_object()).collect()
     }
 
-    #[wasm_bindgen(js_name = getSortedEventsInTicksRange)]
-    pub fn get_sorted_events_in_ticks_range_js(
+    #[wasm_bindgen(js_name = getEventsInTicksRange)]
+    pub fn get_events_in_ticks_range_js(
         &self,
-        track_id: &str,
         start_ticks: u32,
         end_ticks: u32,
         within_duration: bool,
     ) -> js_sys::Array {
-        let track_id = Id::try_from(track_id).expect_throw("Track id is not valid");
-        let track = self.get_track(track_id).expect_throw("Track not found");
-        track
-            .get_sorted_events_in_ticks_range(
-                Ticks::new(start_ticks),
-                Ticks::new(end_ticks),
-                within_duration,
-            )
-            .iter()
-            .map(|event| event.to_js_object())
-            .collect()
+        let song = self.song.as_ref().expect_throw("Song is not set");
+        let events = song.get_events_in_ticks_range(
+            Ticks::new(start_ticks),
+            Ticks::new(end_ticks),
+            within_duration,
+            None, // TODO: None
+        );
+        events.iter().map(|event| event.to_js_object()).collect()
     }
 
     #[wasm_bindgen(js_name = addEvent)]
-    pub fn add_event_js(&mut self, track_id: &str, event: js_sys::Object) {
-        let track_id = Id::try_from(track_id).expect_throw("Track id is not valid");
-        let track = self.get_track_mut(track_id).expect_throw("Track not found");
+    pub fn add_event_js(&mut self, event: js_sys::Object) -> js_sys::Object {
+        let song = self.song.as_mut().expect_throw("Song is not set");
         let event = EventInput::from_js_object(event);
-        track.add_event(event);
+        let event = song.add_event(event);
+        event.to_js_object()
     }
 
     #[wasm_bindgen(js_name = updateEvent)]
-    pub fn update_event_js(&mut self, track_id: &str, event: js_sys::Object) {
-        let track_id = Id::try_from(track_id).expect_throw("Track id is not valid");
-        let track = self.get_track_mut(track_id).expect_throw("Track not found");
+    pub fn update_event_js(&mut self, event: js_sys::Object) -> js_sys::Object {
+        let song = self.song.as_mut().expect_throw("Song is not set");
         let event = EventUpdater::from_js_object(event);
-        track.update_event(event);
+        let event = song.update_event(event);
+        event.to_js_object()
     }
 
     #[wasm_bindgen(js_name = removeEvent)]
-    pub fn remove_event_js(&mut self, track_id: &str, event_id: &str) {
-        let track_id = Id::try_from(track_id).expect_throw("Track id is not valid");
-        let track = self.get_track_mut(track_id).expect_throw("Track not found");
-        if let Ok(event_id) = Id::try_from(event_id) {
-            track.remove_event(event_id);
-        }
+    pub fn remove_event_js(&mut self, event_id: &str) {
+        let song = self.song.as_mut().expect_throw("Song is not set");
+        let event_id = Id::try_from(event_id).expect_throw("Event id is not valid");
+        song.remove_event(&event_id);
     }
 }

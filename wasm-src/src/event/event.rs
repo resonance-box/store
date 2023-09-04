@@ -6,31 +6,6 @@ use wasm_bindgen::{prelude::*, JsValue};
 
 #[wasm_bindgen(typescript_custom_section)]
 const TS_EVENT_INTERFACES: &'static str = r#"
-export interface Note {
-  id: string;
-  ticks: number;
-  duration: number;
-  velocity: number;
-  noteNumber: number;
-}
-
-export interface NoteInput {
-  kind: "Note";
-  ticks: number;
-  duration: number;
-  velocity: number;
-  noteNumber: number;
-}
-
-export interface NoteUpdater {
-  id: string;
-  kind: "Note";
-  ticks?: number;
-  duration?: number;
-  velocity?: number;
-  noteNumber?: number;
-}
-
 export type Event = Note;
 
 export type EventInput = NoteInput;
@@ -60,28 +35,16 @@ pub(crate) enum Event {
 
 impl Event {
     pub(crate) fn from_event_input(event: EventInput) -> Self {
-        let id = Id::new();
-
         match event {
-            EventInput::Note(note) => Event::Note(Note {
-                id,
-                ticks: note.ticks,
-                duration: note.duration,
-                velocity: note.velocity,
-                note_number: note.note_number,
-            }),
+            EventInput::Note(note) => Event::Note(Note::from_event_input(note)),
         }
     }
 
     pub(crate) fn clone_with_updater(&self, updater: EventUpdater) -> Self {
         match (self, updater) {
-            (Event::Note(note), EventUpdater::Note(note_updater)) => Event::Note(Note {
-                id: note.id,
-                ticks: note_updater.ticks.unwrap_or(note.ticks),
-                duration: note_updater.duration.unwrap_or(note.duration),
-                velocity: note_updater.velocity.unwrap_or(note.velocity),
-                note_number: note_updater.note_number.unwrap_or(note.note_number),
-            }),
+            (Event::Note(note), EventUpdater::Note(note_updater)) => {
+                Event::Note(note.clone_with_updater(note_updater))
+            }
         }
     }
 
@@ -100,6 +63,12 @@ impl Event {
     pub(crate) fn get_duration(&self) -> Option<Ticks> {
         match self {
             Event::Note(note) => Some(note.duration),
+        }
+    }
+
+    pub(crate) fn get_track_id(&self) -> Id {
+        match self {
+            Event::Note(note) => note.track_id,
         }
     }
 
