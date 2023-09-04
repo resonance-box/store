@@ -30,13 +30,10 @@ pub struct Song {
     pub(crate) title: String,
     pub(crate) ppq: u32,
     pub(crate) end_of_song: Ticks,
-    track_ids: Vec<Id>,
+    tracks: TrackVec,
     events: HashMap<Id, Event>,
     ticks_index: BTreeMap<Ticks, HashSet<Id>>,
     end_ticks_index: BTreeMap<Ticks, HashSet<Id>>,
-    event_ids_each_track: HashMap<Id, HashSet<Id>>,
-    ticks_index_each_track: HashMap<Id, BTreeMap<Ticks, HashSet<Id>>>,
-    end_ticks_index_each_track: HashMap<Id, BTreeMap<Ticks, HashSet<Id>>>,
 }
 
 impl Song {
@@ -45,39 +42,53 @@ impl Song {
             title,
             ppq,
             end_of_song: Ticks::new(0),
-            track_ids: Vec::new(),
+            tracks: TrackVec::new(),
             events: HashMap::new(),
             ticks_index: BTreeMap::new(),
             end_ticks_index: BTreeMap::new(),
-            event_ids_each_track: HashMap::new(),
-            ticks_index_each_track: HashMap::new(),
-            end_ticks_index_each_track: HashMap::new(),
         }
     }
 
-    pub(crate) fn add_empty_track(&mut self) -> Track {
-        let id = Id::new();
-        self.track_ids.push(id);
-        self.build_track(id).unwrap()
+    pub(crate) fn get_track(&self, track_id: &Id) -> Option<&Track> {
+        self.tracks.iter().find(|track| track.id == *track_id)
     }
 
-    pub(crate) fn remove_track(&mut self, track_id: Id) {
-        if let Some(index) = self.track_ids.iter().position(|&id| id == track_id) {
-            if let Some(event_ids) = self.event_ids_each_track.get(&track_id) {
-                for event_id in event_ids {
-                    self.events.remove(&event_id);
+    fn get_track_mut(&mut self, track_id: &Id) -> Option<&mut Track> {
+        self.tracks.iter_mut().find(|track| track.id == *track_id)
+    }
+
+    pub(crate) fn get_tracks(&self) -> &TrackVec {
+        &self.tracks
+    }
+
+    pub(crate) fn add_empty_track(&mut self) -> &Track {
+        let current_track_count = self.tracks.len();
+
+        let track = Track::new();
+        self.tracks.push(track);
+        self.tracks.get(current_track_count).unwrap()
+    }
+
+    pub(crate) fn remove_track(&mut self, track_id: &Id) {
+        if let Some(index) = self.tracks.iter().position(|track| track.id == *track_id) {
+            if let Some(track) = self.get_track(track_id) {
+                let event_ids_to_remove: Vec<_> = track
+                    .get_events()
+                    .iter()
+                    .map(|event| event.get_id())
+                    .collect();
+
+                for event_id in event_ids_to_remove {
+                    self.remove_event(&event_id);
                 }
             }
 
-            self.track_ids.remove(index);
-            self.event_ids_each_track.remove(&track_id);
-            self.ticks_index_each_track.remove(&track_id);
-            self.end_ticks_index_each_track.remove(&track_id);
+            self.tracks.remove(index);
         }
     }
 
-    pub(crate) fn get_event(&self, event_id: Id) -> Option<&Event> {
-        self.events.get(&event_id)
+    pub(crate) fn get_event(&self, event_id: &Id) -> Option<&Event> {
+        self.events.get(event_id)
     }
 
     fn merge_events_each_track<'a, F>(
@@ -132,15 +143,8 @@ impl Song {
     pub(crate) fn get_events(&self, filter: Option<GetEventsFilter>) -> Vec<&Event> {
         if let Some(track_ids) = filter.and_then(|f| f.track_ids) {
             return self.merge_events_each_track(track_ids, |track_id| {
-                self.ticks_index_each_track
-                    .get(track_id)
-                    .map(|ticks_index| {
-                        ticks_index
-                            .iter()
-                            .map(|(_, ids)| ids.iter().filter_map(|id| self.events.get(id)))
-                            .flatten()
-                            .collect()
-                    })
+                self.get_track(track_id)
+                    .map(|track| track.get_events())
                     .unwrap_or_default()
             });
         }
@@ -159,48 +163,34 @@ impl Song {
         within_duration: bool,
         filter: Option<GetEventsFilter>,
     ) -> Vec<&Event> {
+        if let Some(track_ids) = filter.clone().and_then(|f| f.track_ids) {
+            return self.merge_events_each_track(track_ids, |track_id| {
+                self.get_track(track_id)
+                    .map(|track| {
+                        track.get_events_in_ticks_range(start_ticks, end_ticks, within_duration)
+                    })
+                    .unwrap_or_default()
+            });
+        }
+
         let got_event_ids: RefCell<HashSet<Id>> = RefCell::new(HashSet::new());
 
         // TODO: refactor
-        let events: Vec<&Event> = if let Some(track_ids) = filter.clone().and_then(|f| f.track_ids)
-        {
-            self.merge_events_each_track(track_ids, |track_id| {
-                self.ticks_index_each_track
-                    .get(track_id)
-                    .map(|ticks_index| {
-                        ticks_index
-                            .range(start_ticks..end_ticks)
-                            .map(|(_, ids)| {
-                                ids.iter()
-                                    .filter_map(|id| self.events.get(id))
-                                    .map(|event| {
-                                        if within_duration {
-                                            got_event_ids.borrow_mut().insert(event.get_id());
-                                        }
-                                        event
-                                    })
-                            })
-                            .flatten()
-                            .collect()
+        let events: Vec<&Event> = self
+            .ticks_index
+            .range(start_ticks..end_ticks)
+            .map(|(_, ids)| {
+                ids.iter()
+                    .filter_map(|id| self.events.get(id))
+                    .map(|event| {
+                        if within_duration {
+                            got_event_ids.borrow_mut().insert(event.get_id());
+                        }
+                        event
                     })
-                    .unwrap_or_default()
             })
-        } else {
-            self.ticks_index
-                .range(start_ticks..end_ticks)
-                .map(|(_, ids)| {
-                    ids.iter()
-                        .filter_map(|id| self.events.get(id))
-                        .map(|event| {
-                            if within_duration {
-                                got_event_ids.borrow_mut().insert(event.get_id());
-                            }
-                            event
-                        })
-                })
-                .flatten()
-                .collect()
-        };
+            .flatten()
+            .collect();
 
         if !within_duration {
             return events;
@@ -208,41 +198,19 @@ impl Song {
 
         // TODO: refactor
         let tick = Ticks::new(1);
-        let mut has_duration_events: Vec<&Event> =
-            if let Some(track_ids) = filter.and_then(|f| f.track_ids) {
-                self.merge_events_each_track(track_ids, |track_id| {
-                    self.end_ticks_index_each_track
-                        .get(track_id)
-                        .map(|ticks_index| {
-                            ticks_index
-                                .range((start_ticks + tick)..)
-                                .map(|(_, ids)| {
-                                    ids.iter().filter_map(|id| self.events.get(id)).filter(
-                                        |event| {
-                                            event.get_ticks() < start_ticks
-                                                && !got_event_ids.borrow().contains(&event.get_id())
-                                        },
-                                    )
-                                })
-                                .flatten()
-                                .collect()
-                        })
-                        .unwrap_or_default()
-                })
-            } else {
-                self.end_ticks_index
-                    .range((start_ticks + tick)..)
-                    .map(|(_, ids)| {
-                        ids.iter()
-                            .filter_map(|id| self.events.get(id))
-                            .filter(|event| {
-                                event.get_ticks() < start_ticks
-                                    && !got_event_ids.borrow().contains(&event.get_id())
-                            })
+        let mut has_duration_events: Vec<&Event> = self
+            .end_ticks_index
+            .range((start_ticks + tick)..)
+            .map(|(_, ids)| {
+                ids.iter()
+                    .filter_map(|id| self.events.get(id))
+                    .filter(|event| {
+                        event.get_ticks() < start_ticks
+                            && !got_event_ids.borrow().contains(&event.get_id())
                     })
-                    .flatten()
-                    .collect()
-            };
+            })
+            .flatten()
+            .collect();
 
         // MEMO: can it be implemented so that it does not need to be sorted?
         has_duration_events.sort_by(|a, b| a.get_ticks().cmp(&b.get_ticks()));
@@ -277,29 +245,10 @@ impl Song {
             .or_insert_with(HashSet::new)
             .insert(id);
 
-        self.event_ids_each_track
-            .entry(event.get_track_id())
-            .or_insert_with(HashSet::new)
-            .insert(id);
-
-        self.ticks_index_each_track
-            .entry(event.get_track_id())
-            .or_insert_with(BTreeMap::new)
-            .entry(ticks)
-            .or_insert_with(HashSet::new)
-            .insert(id);
-
         if let Some(duration) = event.get_duration() {
             let end_ticks = ticks + duration;
 
             self.end_ticks_index
-                .entry(end_ticks)
-                .or_insert_with(HashSet::new)
-                .insert(id);
-
-            self.end_ticks_index_each_track
-                .entry(event.get_track_id())
-                .or_insert_with(BTreeMap::new)
                 .entry(end_ticks)
                 .or_insert_with(HashSet::new)
                 .insert(id);
@@ -308,7 +257,12 @@ impl Song {
 
     pub(crate) fn add_event(&mut self, event: EventInput) -> Event {
         let event = Event::from_event_input(event);
+        let track_id = event.get_track_id();
+
         self._add_event(event);
+        self.get_track_mut(&track_id)
+            .map(|track| track.add_event(event));
+
         event
     }
 
@@ -316,12 +270,12 @@ impl Song {
         let id = updater.get_id();
         let event = self.events.get(&id).expect_throw("Event not found");
         let event = event.clone_with_updater(updater);
-        self.remove_event(id);
+        self.remove_event(&id);
         self._add_event(event);
         event
     }
 
-    pub(crate) fn remove_event(&mut self, event_id: Id) {
+    pub(crate) fn remove_event(&mut self, event_id: &Id) {
         let event = self.events.get(&event_id).expect_throw("Event not found");
 
         let ticks = self
@@ -333,55 +287,20 @@ impl Song {
             ids.remove(&event_id);
         }
 
-        if let Some(ids) = self.event_ids_each_track.get_mut(&event.get_track_id()) {
-            ids.remove(&event_id);
-        }
-
-        if let Some(ids) = self.ticks_index_each_track.get_mut(&event.get_track_id()) {
-            if let Some(ids) = ids.get_mut(&ticks) {
-                ids.remove(&event_id);
-            }
-        }
-
         if let Some(duration) = event.get_duration() {
             let end_ticks = ticks + duration;
 
             if let Some(ids) = self.end_ticks_index.get_mut(&end_ticks) {
                 ids.remove(&event_id);
             }
+        }
 
-            if let Some(ids) = self
-                .end_ticks_index_each_track
-                .get_mut(&event.get_track_id())
-            {
-                if let Some(ids) = ids.get_mut(&end_ticks) {
-                    ids.remove(&event_id);
-                }
-            }
+        let track_id = event.get_track_id();
+        if let Some(track) = self.get_track_mut(&track_id) {
+            track.remove_event(&event_id);
         }
 
         self.events.remove(&event_id);
-    }
-
-    pub(crate) fn build_track(&self, track_id: Id) -> Option<Track> {
-        if self.track_ids.iter().find(|&id| *id == track_id).is_none() {
-            return None;
-        }
-
-        let events = self.get_events(Some(GetEventsFilter {
-            track_ids: Some(vec![track_id]),
-        }));
-
-        let track = Track::new(track_id, events);
-
-        Some(track)
-    }
-
-    pub(crate) fn build_all_tracks(&self) -> TrackVec {
-        self.track_ids
-            .iter()
-            .filter_map(|track_id| self.build_track(*track_id))
-            .collect()
     }
 
     pub(crate) fn to_js_object(&self) -> js_sys::Object {
@@ -411,7 +330,7 @@ impl Song {
         js_sys::Reflect::set(
             &js_song,
             &JsValue::from_str("tracks"),
-            &self.build_all_tracks().to_js_array(),
+            &self.get_tracks().to_js_array(),
         )
         .unwrap();
 
@@ -441,18 +360,19 @@ mod tests {
         song.add_empty_track();
         song.add_empty_track();
 
-        let tracks = song.build_all_tracks();
+        let tracks = song.get_tracks();
         assert_eq!(tracks.len(), 2);
 
         let first_track_id = tracks[0].id;
-        let track = song.build_track(first_track_id).unwrap();
+        let track = song.get_track(&first_track_id).unwrap();
         assert_eq!(track.id, tracks[0].id);
 
-        song.remove_track(tracks[0].id);
-        let tracks = song.build_all_tracks();
+        let track_id = tracks[0].id;
+        song.remove_track(&track_id);
+        let tracks = song.get_tracks();
         assert_eq!(tracks.len(), 1);
 
-        assert!(song.build_track(first_track_id).is_none());
+        assert!(song.get_track(&first_track_id).is_none());
     }
 
     #[test]
@@ -480,7 +400,7 @@ mod tests {
             track_id: track_id2,
         }));
 
-        let event = song.get_event(event1.get_id()).unwrap();
+        let event = song.get_event(&event1.get_id()).unwrap();
         assert_eq!(event.get_ticks().as_u32(), 240);
 
         let events = song.get_events(None);
@@ -493,7 +413,7 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].get_ticks().as_u32(), 240);
 
-        song.remove_event(event.get_id());
+        song.remove_event(&event.get_id());
         let events = song.get_events(None);
         assert_eq!(events.len(), 1);
     }

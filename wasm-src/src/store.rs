@@ -75,14 +75,14 @@ impl Store {
     pub fn get_track_js(&self, track_id: &str) -> Option<js_sys::Object> {
         let song = self.song.as_ref().expect_throw("Song is not set");
         let track_id = Id::try_from(track_id).expect_throw("Track id is not valid");
-        let track = song.build_track(track_id);
+        let track = song.get_track(&track_id);
         track.map(|track| track.to_js_object())
     }
 
     #[wasm_bindgen(js_name = getTracks)]
     pub fn get_tracks_js(&self) -> js_sys::Array {
         let song = self.song.as_ref().expect_throw("Song is not set");
-        let tracks = song.build_all_tracks();
+        let tracks = song.get_tracks();
         tracks.to_js_array()
     }
 
@@ -96,14 +96,14 @@ impl Store {
     pub fn remove_track_js(&mut self, track_id: &str) {
         let track_id = Id::try_from(track_id).expect_throw("Track id is not valid");
         let song = self.song.as_mut().expect_throw("Song is not set");
-        song.remove_track(track_id);
+        song.remove_track(&track_id);
     }
 
     #[wasm_bindgen(js_name = getEvent)]
     pub fn get_event_js(&self, event_id: &str) -> Option<js_sys::Object> {
         let song = self.song.as_ref().expect_throw("Song is not set");
         let event_id = Id::try_from(event_id).expect_throw("Event id is not valid");
-        let event = song.get_event(event_id);
+        let event = song.get_event(&event_id);
         event.map(|event| event.to_js_object())
     }
 
@@ -151,6 +151,6 @@ impl Store {
     pub fn remove_event_js(&mut self, event_id: &str) {
         let song = self.song.as_mut().expect_throw("Song is not set");
         let event_id = Id::try_from(event_id).expect_throw("Event id is not valid");
-        song.remove_event(event_id);
+        song.remove_event(&event_id);
     }
 }
