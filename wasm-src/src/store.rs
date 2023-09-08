@@ -1,7 +1,8 @@
 use crate::{
-    event::event::{EventInput, EventUpdater},
+    event::event::{Event, EventUpdater},
     shared::{id::Id, unit::time::Ticks},
     song::song::Song,
+    track::track::Track,
 };
 use wasm_bindgen::prelude::*;
 
@@ -22,7 +23,7 @@ export class Store {
 
   getTracks(): Track[];
 
-  addEmptyTrack(): Track;
+  addTrack(): Track;
 
   removeTrack(trackId: string): void;
 
@@ -32,7 +33,7 @@ export class Store {
 
   getEventsInTicksRange(startTicks: number, endTicks: number, withinDuration: boolean): Event[];
 
-  addEvent(event: EventInput): Event;
+  addEvent(event: Event): Event;
 
   updateEvent(event: EventUpdater): Event;
 
@@ -86,10 +87,11 @@ impl Store {
         tracks.to_js_array()
     }
 
-    #[wasm_bindgen(js_name = addEmptyTrack)]
-    pub fn add_empty_track_js(&mut self) -> js_sys::Object {
+    #[wasm_bindgen(js_name = addTrack)]
+    pub fn add_track_js(&mut self, track: js_sys::Object) -> js_sys::Object {
         let song = self.song.as_mut().expect_throw("Song is not set");
-        song.add_empty_track().to_js_object()
+        let track = Track::from_js_object(track);
+        song.add_track(track).to_js_object()
     }
 
     #[wasm_bindgen(js_name = removeTrack)]
@@ -134,7 +136,7 @@ impl Store {
     #[wasm_bindgen(js_name = addEvent)]
     pub fn add_event_js(&mut self, event: js_sys::Object) -> js_sys::Object {
         let song = self.song.as_mut().expect_throw("Song is not set");
-        let event = EventInput::from_js_object(event);
+        let event = Event::from_js_object(event);
         let event = song.add_event(event);
         event.to_js_object()
     }

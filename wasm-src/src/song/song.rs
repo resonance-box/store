@@ -1,5 +1,5 @@
 use crate::{
-    event::event::{Event, EventInput, EventUpdater},
+    event::event::{Event, EventUpdater},
     shared::{id::Id, unit::time::Ticks},
     track::track::{Track, TrackVec},
 };
@@ -61,10 +61,8 @@ impl Song {
         &self.tracks
     }
 
-    pub(crate) fn add_empty_track(&mut self) -> &Track {
+    pub(crate) fn add_track(&mut self, track: Track) -> &Track {
         let current_track_count = self.tracks.len();
-
-        let track = Track::new();
         self.tracks.push(track);
         self.tracks.get(current_track_count).unwrap()
     }
@@ -255,24 +253,21 @@ impl Song {
         }
     }
 
-    pub(crate) fn add_event(&mut self, event: EventInput) -> Event {
-        let event = Event::from_event_input(event);
+    pub(crate) fn add_event(&mut self, event: Event) -> &Event {
         let track_id = event.get_track_id();
-
         self._add_event(event);
         self.get_track_mut(&track_id)
             .map(|track| track.add_event(event));
-
-        event
+        self.get_event(&event.get_id()).unwrap()
     }
 
-    pub(crate) fn update_event(&mut self, updater: EventUpdater) -> Event {
+    pub(crate) fn update_event(&mut self, updater: EventUpdater) -> &Event {
         let id = updater.get_id();
         let event = self.events.get(&id).expect_throw("Event not found");
         let event = event.clone_with_updater(updater);
         self.remove_event(&id);
         self._add_event(event);
-        event
+        self.get_event(&event.get_id()).unwrap()
     }
 
     pub(crate) fn remove_event(&mut self, event_id: &Id) {
@@ -341,10 +336,7 @@ impl Song {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::event::{
-        event::EventInput,
-        note::{NoteInput, NoteNumber, Velocity},
-    };
+    use crate::event::note::{Note, NoteNumber, Velocity};
 
     #[test]
     fn test_song() {
@@ -357,8 +349,8 @@ mod tests {
     #[test]
     fn test_tracks_scenario() {
         let mut song = Song::new("test".to_string(), 480);
-        song.add_empty_track();
-        song.add_empty_track();
+        song.add_track(Track::new(Id::new(), None));
+        song.add_track(Track::new(Id::new(), None));
 
         let tracks = song.get_tracks();
         assert_eq!(tracks.len(), 2);
@@ -379,20 +371,23 @@ mod tests {
     fn test_events_scenario() {
         let mut song = Song::new("test".to_string(), 480);
 
-        let track1 = song.add_empty_track();
-        let track_id1 = track1.id;
+        let track_id1 = Id::new();
+        song.add_track(Track::new(track_id1, None));
 
-        let track2 = song.add_empty_track();
-        let track_id2 = track2.id;
+        let track_id2 = Id::new();
+        song.add_track(Track::new(track_id2, None));
 
-        let event1 = song.add_event(EventInput::Note(NoteInput {
+        let event_id1 = Id::new();
+        song.add_event(Event::Note(Note {
+            id: event_id1,
             ticks: Ticks::new(240),
             duration: Ticks::new(480),
             velocity: Velocity::new(100),
             note_number: NoteNumber::new(60),
             track_id: track_id1,
         }));
-        song.add_event(EventInput::Note(NoteInput {
+        song.add_event(Event::Note(Note {
+            id: Id::new(),
             ticks: Ticks::new(480),
             duration: Ticks::new(720),
             velocity: Velocity::new(90),
@@ -400,7 +395,7 @@ mod tests {
             track_id: track_id2,
         }));
 
-        let event = song.get_event(&event1.get_id()).unwrap();
+        let event = song.get_event(&event_id1).unwrap();
         assert_eq!(event.get_ticks().as_u32(), 240);
 
         let events = song.get_events(None);
@@ -422,16 +417,17 @@ mod tests {
     fn test_get_events() {
         let mut song = Song::new("test".to_string(), 480);
 
-        let track1 = song.add_empty_track();
-        let track_id1 = track1.id;
+        let track_id1 = Id::new();
+        song.add_track(Track::new(track_id1, None));
 
-        let track2 = song.add_empty_track();
-        let track_id2 = track2.id;
+        let track_id2 = Id::new();
+        song.add_track(Track::new(track_id2, None));
 
-        let track3 = song.add_empty_track();
-        let track_id3 = track3.id;
+        let track_id3 = Id::new();
+        song.add_track(Track::new(track_id3, None));
 
-        song.add_event(EventInput::Note(NoteInput {
+        song.add_event(Event::Note(Note {
+            id: Id::new(),
             ticks: Ticks::new(480),
             duration: Ticks::new(480),
             velocity: Velocity::new(100),
@@ -439,7 +435,8 @@ mod tests {
             track_id: track_id1,
         }));
 
-        song.add_event(EventInput::Note(NoteInput {
+        song.add_event(Event::Note(Note {
+            id: Id::new(),
             ticks: Ticks::new(240),
             duration: Ticks::new(480),
             velocity: Velocity::new(100),
@@ -447,7 +444,8 @@ mod tests {
             track_id: track_id1,
         }));
 
-        song.add_event(EventInput::Note(NoteInput {
+        song.add_event(Event::Note(Note {
+            id: Id::new(),
             ticks: Ticks::new(0),
             duration: Ticks::new(480),
             velocity: Velocity::new(100),
@@ -455,7 +453,8 @@ mod tests {
             track_id: track_id2,
         }));
 
-        song.add_event(EventInput::Note(NoteInput {
+        song.add_event(Event::Note(Note {
+            id: Id::new(),
             ticks: Ticks::new(960),
             duration: Ticks::new(480),
             velocity: Velocity::new(100),
@@ -463,7 +462,8 @@ mod tests {
             track_id: track_id2,
         }));
 
-        song.add_event(EventInput::Note(NoteInput {
+        song.add_event(Event::Note(Note {
+            id: Id::new(),
             ticks: Ticks::new(720),
             duration: Ticks::new(480),
             velocity: Velocity::new(100),
@@ -490,13 +490,14 @@ mod tests {
     }
 
     fn create_tracks_and_events(song: &mut Song) -> [Id; 2] {
-        let track1 = song.add_empty_track();
-        let track_id1 = track1.id;
+        let track_id1 = Id::new();
+        song.add_track(Track::new(track_id1, None));
 
-        let track2 = song.add_empty_track();
-        let track_id2 = track2.id;
+        let track_id2 = Id::new();
+        song.add_track(Track::new(track_id2, None));
 
-        song.add_event(EventInput::Note(NoteInput {
+        song.add_event(Event::Note(Note {
+            id: Id::new(),
             ticks: Ticks::new(480),
             duration: Ticks::new(480),
             velocity: Velocity::new(100),
@@ -504,7 +505,8 @@ mod tests {
             track_id: track_id1,
         }));
 
-        song.add_event(EventInput::Note(NoteInput {
+        song.add_event(Event::Note(Note {
+            id: Id::new(),
             ticks: Ticks::new(959),
             duration: Ticks::new(480),
             velocity: Velocity::new(100),
@@ -512,7 +514,8 @@ mod tests {
             track_id: track_id2,
         }));
 
-        song.add_event(EventInput::Note(NoteInput {
+        song.add_event(Event::Note(Note {
+            id: Id::new(),
             ticks: Ticks::new(0),
             duration: Ticks::new(240),
             velocity: Velocity::new(100),
@@ -520,7 +523,8 @@ mod tests {
             track_id: track_id1,
         }));
 
-        song.add_event(EventInput::Note(NoteInput {
+        song.add_event(Event::Note(Note {
+            id: Id::new(),
             ticks: Ticks::new(240),
             duration: Ticks::new(480),
             velocity: Velocity::new(100),
@@ -528,7 +532,8 @@ mod tests {
             track_id: track_id2,
         }));
 
-        song.add_event(EventInput::Note(NoteInput {
+        song.add_event(Event::Note(Note {
+            id: Id::new(),
             ticks: Ticks::new(0),
             duration: Ticks::new(480),
             velocity: Velocity::new(100),
@@ -536,7 +541,8 @@ mod tests {
             track_id: track_id1,
         }));
 
-        song.add_event(EventInput::Note(NoteInput {
+        song.add_event(Event::Note(Note {
+            id: Id::new(),
             ticks: Ticks::new(0),
             duration: Ticks::new(960),
             velocity: Velocity::new(100),
@@ -544,7 +550,8 @@ mod tests {
             track_id: track_id2,
         }));
 
-        song.add_event(EventInput::Note(NoteInput {
+        song.add_event(Event::Note(Note {
+            id: Id::new(),
             ticks: Ticks::new(0),
             duration: Ticks::new(479),
             velocity: Velocity::new(100),
@@ -552,7 +559,8 @@ mod tests {
             track_id: track_id1,
         }));
 
-        song.add_event(EventInput::Note(NoteInput {
+        song.add_event(Event::Note(Note {
+            id: Id::new(),
             ticks: Ticks::new(960),
             duration: Ticks::new(480),
             velocity: Velocity::new(100),
@@ -560,7 +568,8 @@ mod tests {
             track_id: track_id2,
         }));
 
-        song.add_event(EventInput::Note(NoteInput {
+        song.add_event(Event::Note(Note {
+            id: Id::new(),
             ticks: Ticks::new(120),
             duration: Ticks::new(1920),
             velocity: Velocity::new(100),

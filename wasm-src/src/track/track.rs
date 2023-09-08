@@ -26,13 +26,21 @@ pub struct Track {
 }
 
 impl Track {
-    pub(crate) fn new() -> Self {
-        Track {
-            id: Id::new(),
+    pub(crate) fn new(id: Id, events: Option<Vec<Event>>) -> Self {
+        let mut track = Track {
+            id,
             events: HashMap::new(),
             ticks_index: BTreeMap::new(),
             end_ticks_index: BTreeMap::new(),
+        };
+
+        if let Some(events) = events {
+            for event in events {
+                track.add_event(event);
+            }
         }
+
+        track
     }
 
     pub(crate) fn get_event(&self, event_id: &Id) -> Option<&Event> {
@@ -158,6 +166,23 @@ impl Track {
         self.events.remove(&event_id);
     }
 
+    pub(crate) fn from_js_object(obj: js_sys::Object) -> Self {
+        let id = js_sys::Reflect::get(&obj, &JsValue::from_str("id"))
+            .unwrap()
+            .as_string()
+            .unwrap();
+        let id = Id::try_from(id.as_str()).unwrap();
+
+        let events: Vec<Event> =
+            js_sys::Array::from(&js_sys::Reflect::get(&obj, &JsValue::from_str("events")).unwrap())
+                .iter()
+                .map(|event| js_sys::Object::from(event))
+                .map(|event| Event::from_js_object(event))
+                .collect();
+
+        Track::new(id, Some(events))
+    }
+
     pub(crate) fn to_js_object(&self) -> js_sys::Object {
         let js_track = js_sys::Object::new();
 
@@ -213,5 +238,49 @@ impl Deref for TrackVec {
 impl DerefMut for TrackVec {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::event::note::{Note, NoteNumber, Velocity};
+
+    use super::*;
+
+    #[test]
+    fn test_new_track() {
+        let id = Id::new();
+        let track = Track::new(id, None);
+        assert_eq!(track.id, id);
+        assert_eq!(track.events.len(), 0);
+        assert_eq!(track.ticks_index.len(), 0);
+        assert_eq!(track.end_ticks_index.len(), 0);
+    }
+
+    #[test]
+    fn test_new_track_with_events() {
+        let track_id = Id::new();
+
+        let event1 = Event::Note(Note {
+            id: Id::new(),
+            ticks: Ticks::new(0),
+            duration: Ticks::new(480),
+            velocity: Velocity::new(100),
+            note_number: NoteNumber::new(60),
+            track_id,
+        });
+
+        let event2 = Event::Note(Note {
+            id: Id::new(),
+            ticks: Ticks::new(480),
+            duration: Ticks::new(480),
+            velocity: Velocity::new(100),
+            note_number: NoteNumber::new(60),
+            track_id,
+        });
+
+        let track = Track::new(track_id, Some(vec![event1, event2]));
+        assert_eq!(track.id, track_id);
+        assert_eq!(track.get_events().len(), 2);
     }
 }

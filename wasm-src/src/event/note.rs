@@ -70,17 +70,6 @@ pub(crate) struct Note {
 }
 
 impl Note {
-    pub(crate) fn from_event_input(event_input: NoteInput) -> Self {
-        Note {
-            id: Id::new(),
-            ticks: event_input.ticks,
-            duration: event_input.duration,
-            velocity: event_input.velocity,
-            note_number: event_input.note_number,
-            track_id: event_input.track_id,
-        }
-    }
-
     pub(crate) fn clone_with_updater(&self, updater: NoteUpdater) -> Self {
         Note {
             id: self.id,
@@ -89,6 +78,47 @@ impl Note {
             velocity: updater.velocity.unwrap_or(self.velocity),
             note_number: updater.note_number.unwrap_or(self.note_number),
             track_id: updater.track_id.unwrap_or(self.track_id),
+        }
+    }
+
+    pub(crate) fn from_js_object(obj: js_sys::Object) -> Self {
+        let id = js_sys::Reflect::get(&obj, &JsValue::from_str("id"))
+            .unwrap()
+            .as_string()
+            .unwrap();
+
+        let ticks = js_sys::Reflect::get(&obj, &JsValue::from_str("ticks"))
+            .unwrap()
+            .as_f64()
+            .unwrap();
+
+        let duration = js_sys::Reflect::get(&obj, &JsValue::from_str("duration"))
+            .unwrap()
+            .as_f64()
+            .unwrap();
+
+        let velocity = js_sys::Reflect::get(&obj, &JsValue::from_str("velocity"))
+            .unwrap()
+            .as_f64()
+            .unwrap();
+
+        let note_number = js_sys::Reflect::get(&obj, &JsValue::from_str("noteNumber"))
+            .unwrap()
+            .as_f64()
+            .unwrap();
+
+        let track_id = js_sys::Reflect::get(&obj, &JsValue::from_str("trackId"))
+            .unwrap()
+            .as_string()
+            .unwrap();
+
+        Note {
+            id: Id::try_from(id.as_str()).unwrap(),
+            ticks: Ticks::new(ticks as u32),
+            duration: Ticks::new(duration as u32),
+            velocity: Velocity::new(velocity as u8),
+            note_number: NoteNumber::new(note_number as u8),
+            track_id: Id::try_from(track_id.as_str()).unwrap(),
         }
     }
 
@@ -145,52 +175,6 @@ impl Note {
         .unwrap();
 
         js_event
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub(crate) struct NoteInput {
-    pub(crate) ticks: Ticks,
-    pub(crate) duration: Ticks,
-    pub(crate) velocity: Velocity,
-    pub(crate) note_number: NoteNumber,
-    pub(crate) track_id: Id,
-}
-
-impl NoteInput {
-    pub(crate) fn from_js_object(obj: js_sys::Object) -> Self {
-        let ticks = js_sys::Reflect::get(&obj, &JsValue::from_str("ticks"))
-            .unwrap()
-            .as_f64()
-            .unwrap();
-
-        let duration = js_sys::Reflect::get(&obj, &JsValue::from_str("duration"))
-            .unwrap()
-            .as_f64()
-            .unwrap();
-
-        let velocity = js_sys::Reflect::get(&obj, &JsValue::from_str("velocity"))
-            .unwrap()
-            .as_f64()
-            .unwrap();
-
-        let note_number = js_sys::Reflect::get(&obj, &JsValue::from_str("noteNumber"))
-            .unwrap()
-            .as_f64()
-            .unwrap();
-
-        let track_id = js_sys::Reflect::get(&obj, &JsValue::from_str("trackId"))
-            .unwrap()
-            .as_string()
-            .unwrap();
-
-        NoteInput {
-            ticks: Ticks::new(ticks as u32),
-            duration: Ticks::new(duration as u32),
-            velocity: Velocity::new(velocity as u8),
-            note_number: NoteNumber::new(note_number as u8),
-            track_id: Id::try_from(track_id.as_str()).unwrap(),
-        }
     }
 }
 

@@ -1,4 +1,4 @@
-use super::note::{Note, NoteInput, NoteUpdater};
+use super::note::{Note, NoteUpdater};
 use crate::shared::{id::Id, unit::time::Ticks};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
@@ -34,12 +34,6 @@ pub(crate) enum Event {
 }
 
 impl Event {
-    pub(crate) fn from_event_input(event: EventInput) -> Self {
-        match event {
-            EventInput::Note(note) => Event::Note(Note::from_event_input(note)),
-        }
-    }
-
     pub(crate) fn clone_with_updater(&self, updater: EventUpdater) -> Self {
         match (self, updater) {
             (Event::Note(note), EventUpdater::Note(note_updater)) => {
@@ -72,19 +66,6 @@ impl Event {
         }
     }
 
-    pub(crate) fn to_js_object(&self) -> js_sys::Object {
-        match self {
-            Event::Note(note) => note.to_js_object(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub(crate) enum EventInput {
-    Note(NoteInput),
-}
-
-impl EventInput {
     pub(crate) fn from_js_object(obj: js_sys::Object) -> Self {
         let kind = js_sys::Reflect::get(&obj, &JsValue::from_str("kind"))
             .unwrap()
@@ -93,8 +74,14 @@ impl EventInput {
         let kind = EventKind::from_str(&kind).unwrap();
 
         match kind {
-            EventKind::Note => EventInput::Note(NoteInput::from_js_object(obj)),
+            EventKind::Note => Event::Note(Note::from_js_object(obj)),
             _ => panic!("Unknown event kind: {}", kind),
+        }
+    }
+
+    pub(crate) fn to_js_object(&self) -> js_sys::Object {
+        match self {
+            Event::Note(note) => note.to_js_object(),
         }
     }
 }
