@@ -6,14 +6,6 @@ use wasm_bindgen::{prelude::*, JsValue};
 const TS_NOTE_INTERFACES: &'static str = r#"
 export interface Note {
   id: string;
-  ticks: number;
-  duration: number;
-  velocity: number;
-  noteNumber: number;
-  trackId: string;
-}
-
-export interface NoteInput {
   kind: "Note";
   ticks: number;
   duration: number;

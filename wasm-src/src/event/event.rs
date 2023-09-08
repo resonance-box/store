@@ -8,8 +8,6 @@ use wasm_bindgen::{prelude::*, JsValue};
 const TS_EVENT_INTERFACES: &'static str = r#"
 export type Event = Note;
 
-export type EventInput = NoteInput;
-
 export type EventUpdater = NoteUpdater;
 "#;
 

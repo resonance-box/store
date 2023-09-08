@@ -23,7 +23,7 @@ export class Store {
 
   getTracks(): Track[];
 
-  addTrack(): Track;
+  addTrack(track: Track): Track;
 
   removeTrack(trackId: string): void;
 
